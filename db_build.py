@@ -85,17 +85,20 @@ def _load_modules() -> dict:
 
 
 def load_pack() -> dict:
+    """Module JSON is canonical when present. database_full.json is only a fallback snapshot."""
+    data = _load_modules()
+    if any(data.values()):
+        ver_path = BASE / "version.json"
+        version = "local"
+        if ver_path.exists():
+            version = json.loads(ver_path.read_text(encoding="utf-8")).get("data_version", version)
+        data["version"] = version
+        return data
     full = BASE / "database_full.json"
     if full.exists():
-        data = json.loads(full.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and any(k in data for k in MODULES):
-            return data
-    data = _load_modules()
-    ver_path = BASE / "version.json"
-    version = "local"
-    if ver_path.exists():
-        version = json.loads(ver_path.read_text(encoding="utf-8")).get("data_version", version)
-    data["version"] = version
+        blob = json.loads(full.read_text(encoding="utf-8"))
+        if isinstance(blob, dict) and any(k in blob for k in MODULES):
+            return blob
     return data
 
 
@@ -112,7 +115,29 @@ def _blob(row: dict) -> str:
 
 
 def _norm(name: str) -> str:
-    return " ".join((name or "").lower().replace("-", " ").split())
+    return " ".join((name or "").lower().replace("-", " ").replace("/", " ").split())
+
+
+# Pack stays canonical. These aliases only help the derived link layer.
+INGREDIENT_ALIASES = {
+    "metal": "metal scraps ingots",
+    "metal scraps": "metal scraps ingots",
+    "electronics": "electronic part",
+    "electronic": "electronic part",
+    "stardust materials": "stardust source sample",
+    "herbs": "medicinal herb",
+    "herb": "medicinal herb",
+    "corn": "corn",
+    "cloth": "cloth",
+    "acid": "acid",
+    "gunpowder": "gunpowder",
+    "rubber": "rubber",
+    "heart vine": "heart vine",
+    "silver spring": "silver spring",
+    "small balloons": "small balloons",
+    "split core cotton": "split core cotton",
+    "thread of dreams": "thread of dreams",
+}
 
 
 def build(db_path: Path | None = None) -> dict:
@@ -148,11 +173,20 @@ def build(db_path: Path | None = None) -> dict:
             PRIMARY KEY (src_table, src_id, dst_table, dst_id, relation)
         )"""
     )
+    c.execute(
+        """CREATE TABLE data_issues (
+            kind TEXT, table_name TEXT, item_id TEXT, detail TEXT
+        )"""
+    )
     total = 0
     catalog = []
     for table, (schema, cols) in SCHEMAS.items():
         c.execute(f"CREATE TABLE {table} ({schema})")
         c.execute(f"CREATE INDEX idx_{table}_name ON {table}(name)")
+        if "type" in cols:
+            c.execute(f"CREATE INDEX idx_{table}_type ON {table}(type)")
+        if "rarity" in cols:
+            c.execute(f"CREATE INDEX idx_{table}_rarity ON {table}(rarity)")
         for row in data.get(table, []):
             vals = []
             for col in cols:
@@ -184,7 +218,40 @@ def build(db_path: Path | None = None) -> dict:
         key = _norm(name)
         if key:
             by_name.setdefault(key, []).append((table, row.get("id")))
+    seen_ids: dict[tuple[str, str], int] = {}
+    for table, row in catalog:
+        key = (table, row.get("id") or "")
+        seen_ids[key] = seen_ids.get(key, 0) + 1
+    for (table, item_id), count in seen_ids.items():
+        if count > 1 or not item_id:
+            c.execute(
+                "INSERT INTO data_issues VALUES (?,?,?,?)",
+                ("duplicate_or_empty_id", table, item_id, f"count={count}"),
+            )
+    for key, hits in by_name.items():
+        tables = {table for table, _ in hits}
+        if len(hits) > 1 and tables == {"materials"}:
+            c.execute(
+                "INSERT INTO data_issues VALUES (?,?,?,?)",
+                ("duplicate_name", "materials", hits[0][1], key),
+            )
     link_count = 0
+    unresolved = 0
+
+    def resolve(label: str):
+        key = _norm(label)
+        if not key:
+            return []
+        aliased = INGREDIENT_ALIASES.get(key, key)
+        hit = by_name.get(aliased) or by_name.get(key)
+        if hit:
+            return [(table, item_id, 1.0) for table, item_id in hit if table != "recipes"]
+        partial = []
+        for name, refs in by_name.items():
+            if aliased in name or name in aliased:
+                partial.extend((table, item_id, 0.6) for table, item_id in refs if table != "recipes")
+        return partial
+
     for row in data.get("recipes", []):
         ingredients = row.get("ingredients") or []
         if isinstance(ingredients, str):
@@ -194,15 +261,18 @@ def build(db_path: Path | None = None) -> dict:
                 ingredients = []
         for ing in ingredients:
             label = ing.get("name") if isinstance(ing, dict) else str(ing)
-            hit = by_name.get(_norm(label))
+            hit = resolve(label)
             if not hit:
+                unresolved += 1
+                c.execute(
+                    "INSERT INTO data_issues VALUES (?,?,?,?)",
+                    ("unresolved_ingredient", "recipes", row.get("id"), label),
+                )
                 continue
-            for dst_table, dst_id in hit:
-                if dst_table == "recipes":
-                    continue
+            for dst_table, dst_id, score in hit:
                 c.execute(
                     "INSERT OR IGNORE INTO links VALUES (?,?,?,?,?,?)",
-                    ("recipes", row.get("id"), dst_table, dst_id, "ingredient", 1.0),
+                    ("recipes", row.get("id"), dst_table, dst_id, "ingredient", score),
                 )
                 link_count += 1
     c.execute(
@@ -212,12 +282,12 @@ def build(db_path: Path | None = None) -> dict:
         "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
     )
     c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
+        "INSERT INTO data_versions VALUES ('schema', '5.4.1-aliases-issues', ?)",
         (now,),
     )
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    return {"records": total, "links": link_count, "unresolved_ingredients": unresolved, "version": ver, "db": str(path)}
 
 
 if __name__ == "__main__":

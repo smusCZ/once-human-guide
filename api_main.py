@@ -16,8 +16,8 @@ DB_PATH = BASE / "once_human.db"
 if not DB_PATH.exists():
     DB_PATH = BASE.parent / "once_human.db"
 
-DATA_VERSION = "2026-10-01-v19.1-372"
-API_VERSION = "5.4.0"
+DATA_VERSION = "2026-10-03-v19.1-384"
+API_VERSION = "5.4.1"
 MAP_EMBEDS = {
     "thgl": "https://oncehuman.th.gl",
     "mapgenie": "https://mapgenie.io/once-human/maps/nalcott",
@@ -196,6 +196,15 @@ def stats():
     return out
 
 
+def _fts_query(q: str) -> str:
+    tokens = []
+    for raw in q.replace('"', " ").split():
+        token = "".join(ch for ch in raw if ch.isalnum() or ch in "-_")
+        if token:
+            tokens.append(token + "*")
+    return " AND ".join(tokens)
+
+
 @app.get("/integrity")
 def integrity():
     conn = get_db()
@@ -213,32 +222,59 @@ def integrity():
         counts[table] = n
         if empty:
             issues.append({"table": table, "empty_names": empty})
+    try:
+        for row in conn.execute("SELECT kind, table_name, item_id, detail FROM data_issues"):
+            issues.append({
+                "kind": row["kind"],
+                "table": row["table_name"],
+                "id": row["item_id"],
+                "detail": row["detail"],
+            })
+    except sqlite3.Error:
+        pass
     quick = conn.execute("PRAGMA quick_check").fetchone()[0]
     conn.close()
+    blocking = [i for i in issues if i.get("kind") != "duplicate_name"]
     return {
-        "ok": quick == "ok" and not issues,
+        "ok": quick == "ok" and not blocking,
         "quick_check": quick,
         "counts": counts,
         "issues": issues,
-        "expected_records": 372,
+        "expected_records": 384,
     }
+
+
+@app.get("/entity/{table}/{item_id}")
+def entity(table: str, item_id: str):
+    if table not in TABLES:
+        raise HTTPException(404, f"Unknown table: {table}")
+    conn = get_db()
+    row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (item_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(404, "Not found")
+    return rows_to_list([row])[0]
 
 
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
     conn = get_db()
+    match = _fts_query(q)
     try:
+        if not match:
+            raise sqlite3.Error("empty")
         rows = conn.execute(
-            """SELECT table_name, id, name, blob
+            """SELECT table_name, id, name, blob, bm25(entities_fts) AS rank
                FROM entities_fts
                WHERE entities_fts MATCH ?
+               ORDER BY rank
                LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
+            (match, limit),
         ).fetchall()
         mode = "fts"
     except sqlite3.Error:
         rows = conn.execute(
-            """SELECT table_name, id, name, blob FROM entities
+            """SELECT table_name, id, name, blob, 0 AS rank FROM entities
                WHERE lower(name) LIKE ? OR lower(blob) LIKE ?
                LIMIT ?""",
             (f"%{q.lower()}%", f"%{q.lower()}%", limit),
@@ -246,7 +282,13 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
         mode = "like"
     conn.close()
     results = [
-        {"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]}
+        {
+            "table": r["table_name"],
+            "id": r["id"],
+            "name": r["name"],
+            "rank": r["rank"],
+            "snippet": (r["blob"] or "")[:180],
+        }
         for r in rows
     ]
     return {"q": q, "mode": mode, "count": len(results), "results": results}

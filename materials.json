@@ -224,5 +224,77 @@
     "tags": [
       "deviation"
     ]
+  },
+  {
+    "id": "mat_meat",
+    "name": "Meat",
+    "type": "Recipe input",
+    "desc": "Animal drop used in campfire food. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_fruit",
+    "name": "Fruit",
+    "type": "Recipe input",
+    "desc": "Generic gatherable used in drinks. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_noodles",
+    "name": "Noodles",
+    "type": "Recipe input",
+    "desc": "Crafted staple used in Hug Bowl. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_inspiration",
+    "name": "Inspiration Fragment",
+    "type": "Recipe input",
+    "desc": "Deviant crafting fragment. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_spatial_keystone",
+    "name": "Spatial Keystone",
+    "type": "Recipe input",
+    "desc": "Space Twist recipe input. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_plasma",
+    "name": "Plasma",
+    "type": "Recipe input",
+    "desc": "Energy ammo / deviation input. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_snowdust",
+    "name": "Snowdust",
+    "type": "Recipe input",
+    "desc": "Winter scenario crafting dust. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_cracker",
+    "name": "Cracker Crumbs",
+    "type": "Recipe input",
+    "desc": "Food crafting crumb. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_feather",
+    "name": "Upper World Feather",
+    "type": "Recipe input",
+    "desc": "Deviation crafting feather. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_alcohol",
+    "name": "Alcohol",
+    "type": "Recipe input",
+    "desc": "Medical crafting input for bandages. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_sugar",
+    "name": "Sugar",
+    "type": "Recipe input",
+    "desc": "Drink crafting input. Added so recipe links resolve; confirm against patch notes."
+  },
+  {
+    "id": "mat_fuel",
+    "name": "Fuel",
+    "type": "Recipe input",
+    "desc": "Generator and thermal tower input. Added so recipe links resolve; confirm against patch notes."
   }
 ]
