@@ -99,6 +99,13 @@ def load_pack() -> dict:
     return data
 
 
+def _stamp_version(data: dict) -> dict:
+    ver_path = BASE / "version.json"
+    if ver_path.exists():
+        data["version"] = json.loads(ver_path.read_text(encoding="utf-8")).get("data_version", data.get("version"))
+    return data
+
+
 def _blob(row: dict) -> str:
     parts = []
     for key, value in row.items():
@@ -115,8 +122,13 @@ def _norm(name: str) -> str:
     return " ".join((name or "").lower().replace("-", " ").split())
 
 
+def _fold(name: str) -> str:
+    table = str.maketrans("áčďéěíňóřšťúůýžäöü", "acdeeinorstuuyzaou")
+    return _norm(name).translate(table)
+
+
 def build(db_path: Path | None = None) -> dict:
-    data = load_pack()
+    data = _stamp_version(load_pack())
     path = db_path or DB_PATH
     if path.exists():
         path.unlink()
@@ -148,11 +160,29 @@ def build(db_path: Path | None = None) -> dict:
             PRIMARY KEY (src_table, src_id, dst_table, dst_id, relation)
         )"""
     )
+    c.execute(
+        """CREATE TABLE aliases (
+            alias TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            id TEXT NOT NULL,
+            PRIMARY KEY (alias, table_name, id)
+        )"""
+    )
+    c.execute("CREATE INDEX idx_aliases_alias ON aliases(alias)")
+    c.execute(
+        """CREATE TABLE data_issues (
+            kind TEXT, table_name TEXT, id TEXT, detail TEXT
+        )"""
+    )
     total = 0
     catalog = []
     for table, (schema, cols) in SCHEMAS.items():
         c.execute(f"CREATE TABLE {table} ({schema})")
         c.execute(f"CREATE INDEX idx_{table}_name ON {table}(name)")
+        if "type" in cols:
+            c.execute(f"CREATE INDEX idx_{table}_type ON {table}(type)")
+        if "rarity" in cols:
+            c.execute(f"CREATE INDEX idx_{table}_rarity ON {table}(rarity)")
         for row in data.get(table, []):
             vals = []
             for col in cols:
@@ -184,6 +214,18 @@ def build(db_path: Path | None = None) -> dict:
         key = _norm(name)
         if key:
             by_name.setdefault(key, []).append((table, row.get("id")))
+        folded = _fold(name)
+        if folded:
+            c.execute(
+                "INSERT OR IGNORE INTO aliases VALUES (?,?,?)",
+                (folded, table, row.get("id")),
+            )
+        rid = row.get("id")
+        if not rid:
+            c.execute(
+                "INSERT INTO data_issues VALUES (?,?,?,?)",
+                ("missing_id", table, "", name),
+            )
     link_count = 0
     for row in data.get("recipes", []):
         ingredients = row.get("ingredients") or []
@@ -205,6 +247,36 @@ def build(db_path: Path | None = None) -> dict:
                     ("recipes", row.get("id"), dst_table, dst_id, "ingredient", 1.0),
                 )
                 link_count += 1
+    for table, row in catalog:
+        for field, relation in (("drops", "drop"), ("location", "located_at"), ("rewards", "reward")):
+            raw = row.get(field)
+            if not raw:
+                continue
+            label = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
+            for key, hits in by_name.items():
+                if len(key) < 4 or key not in _norm(label):
+                    continue
+                for dst_table, dst_id in hits:
+                    if dst_table == table and dst_id == row.get("id"):
+                        continue
+                    c.execute(
+                        "INSERT OR IGNORE INTO links VALUES (?,?,?,?,?,?)",
+                        (table, row.get("id"), dst_table, dst_id, relation, 0.6),
+                    )
+                    link_count += 1
+    seen = {}
+    for table, row in catalog:
+        rid = row.get("id")
+        if not rid:
+            continue
+        prev = seen.get((table, rid))
+        if prev:
+            c.execute(
+                "INSERT INTO data_issues VALUES (?,?,?,?)",
+                ("duplicate_id", table, rid, prev),
+            )
+        else:
+            seen[(table, rid)] = row.get("name") or ""
     c.execute(
         "CREATE VIRTUAL TABLE entities_fts USING fts5(table_name, id, name, blob, tokenize='unicode61')"
     )
@@ -212,7 +284,7 @@ def build(db_path: Path | None = None) -> dict:
         "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
     )
     c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
+        "INSERT INTO data_versions VALUES ('schema', '5.5-aliases-issues', ?)",
         (now,),
     )
     conn.commit()

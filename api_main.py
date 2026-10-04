@@ -16,8 +16,18 @@ DB_PATH = BASE / "once_human.db"
 if not DB_PATH.exists():
     DB_PATH = BASE.parent / "once_human.db"
 
-DATA_VERSION = "2026-10-01-v19.1-372"
-API_VERSION = "5.4.0"
+def _meta() -> dict:
+    path = BASE / "version.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+_META = _meta()
+DATA_VERSION = _META.get("data_version", "2026-10-01-v19.1-372")
+API_VERSION = _META.get("app_version", "5.5.0")
 MAP_EMBEDS = {
     "thgl": "https://oncehuman.th.gl",
     "mapgenie": "https://mapgenie.io/once-human/maps/nalcott",
@@ -207,43 +217,90 @@ def integrity():
             empty = conn.execute(
                 f"SELECT COUNT(*) FROM {table} WHERE name IS NULL OR trim(name)=''"
             ).fetchone()[0]
+            dups = conn.execute(
+                f"SELECT id, COUNT(*) c FROM {table} GROUP BY id HAVING c > 1"
+            ).fetchall()
         except sqlite3.Error as exc:
             issues.append({"table": table, "error": str(exc)})
             continue
         counts[table] = n
         if empty:
             issues.append({"table": table, "empty_names": empty})
+        for row in dups:
+            issues.append({"table": table, "duplicate_id": row["id"], "count": row["c"]})
+    try:
+        stored = conn.execute(
+            "SELECT kind, table_name, id, detail FROM data_issues LIMIT 50"
+        ).fetchall()
+        for row in stored:
+            issues.append(dict(row))
+    except sqlite3.Error:
+        stored = []
     quick = conn.execute("PRAGMA quick_check").fetchone()[0]
     conn.close()
+    total = sum(counts.values())
     return {
-        "ok": quick == "ok" and not issues,
+        "ok": quick == "ok" and not issues and total == 372,
         "quick_check": quick,
         "counts": counts,
         "issues": issues,
         "expected_records": 372,
+        "records": total,
     }
 
 
+def _fold(value: str) -> str:
+    table = str.maketrans("áčďéěíňóřšťúůýžäöü", "acdeeinorstuuyzaou")
+    return " ".join((value or "").lower().replace("-", " ").split()).translate(table)
+
+
 @app.get("/search")
-def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
+def search(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(50, ge=1, le=200),
+    table: str | None = None,
+):
+    if table and table not in TABLES:
+        raise HTTPException(404, f"Unknown table: {table}")
     conn = get_db()
+    folded = _fold(q)
+    mode = "fts"
     try:
-        rows = conn.execute(
-            """SELECT table_name, id, name, blob
-               FROM entities_fts
-               WHERE entities_fts MATCH ?
-               LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
-        ).fetchall()
-        mode = "fts"
+        match = q.replace('"', " ") + "*"
+        sql = """SELECT table_name, id, name, blob FROM entities_fts WHERE entities_fts MATCH ?"""
+        args: list = [match]
+        if table:
+            sql += " AND table_name = ?"
+            args.append(table)
+        sql += " LIMIT ?"
+        args.append(limit)
+        rows = conn.execute(sql, args).fetchall()
     except sqlite3.Error:
-        rows = conn.execute(
-            """SELECT table_name, id, name, blob FROM entities
-               WHERE lower(name) LIKE ? OR lower(blob) LIKE ?
-               LIMIT ?""",
-            (f"%{q.lower()}%", f"%{q.lower()}%", limit),
-        ).fetchall()
+        rows = []
         mode = "like"
+    if not rows:
+        mode = "alias" if mode != "like" else mode
+        try:
+            sql = """SELECT e.table_name, e.id, e.name, e.blob
+                     FROM aliases a JOIN entities e ON e.table_name=a.table_name AND e.id=a.id
+                     WHERE a.alias LIKE ?"""
+            args = [f"%{folded}%"]
+            if table:
+                sql += " AND a.table_name = ?"
+                args.append(table)
+            sql += " LIMIT ?"
+            args.append(limit)
+            rows = conn.execute(sql, args).fetchall()
+            if rows:
+                mode = "alias"
+        except sqlite3.Error:
+            rows = conn.execute(
+                """SELECT table_name, id, name, blob FROM entities
+                   WHERE lower(name) LIKE ? OR lower(blob) LIKE ?
+                   LIMIT ?""",
+                (f"%{q.lower()}%", f"%{q.lower()}%", limit),
+            ).fetchall()
+            mode = "like"
     conn.close()
     results = [
         {"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]}
@@ -393,7 +450,7 @@ def update_check():
     try:
         req = urllib.request.Request(
             f"{raw}/version.json",
-            headers={"User-Agent": "OnceHumanGuide-API/5.4"},
+            headers={"User-Agent": "OnceHumanGuide-API/5.5"},
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             remote = json.loads(resp.read().decode("utf-8"))
