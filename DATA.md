@@ -1,7 +1,8 @@
 # Once Human Guide — Data
 
-**version:** `2026-09-30-v5-complete`  
-**app:** 5.0.0  
+**version:** `2026-10-04-v19.2-372`  
+**app:** 5.5.0  
+**derived:** links, aliases, quality (built by `db_build.py`, not stored in pack)  
 **patch_target:** 3.0.7 live · Isles of Abyss prep  
 
 ## Modules on GitHub (module JSON)

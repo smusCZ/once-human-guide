@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.5.0 / shell 19.2 — 2026-10-04
+
+- SQLite: odvozené vazby `drop` / `source` / `region`, tabulky `aliases` a `quality` (pack se nemění)
+- API: `/suggest`, `/quality`, `/facets`; `/search` řadí bm25 a padá na aliasy
+- Shell: živé našeptávání, když běží přes API (`/ui`)
+- Pack zůstává 372 entit
+
+
 ## 5.4.0 / shell 19.1 — 2026-10-01
 
 - `/ui` servíruje shell i statické assety (`/modules`, `ohg_data.js`, `ohg_sw.js`) — SPA se na API opravdu spustí

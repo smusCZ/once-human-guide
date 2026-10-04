@@ -101,6 +101,9 @@ def root():
             "version": "/version",
             "stats": "/stats",
             "search": "/search?q=",
+            "suggest": "/suggest?q=",
+            "quality": "/quality",
+            "facets": "/facets",
             "integrity": "/integrity",
             "links": "/links/{table}/{id}",
             "export": "/export",
@@ -224,32 +227,116 @@ def integrity():
     }
 
 
+def _fts_query(q: str) -> str:
+    tokens = [part for part in q.replace('"', " ").split() if part]
+    return " ".join(f"{part}*" for part in tokens) or q
+
+
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
     conn = get_db()
+    mode = "fts"
     try:
         rows = conn.execute(
-            """SELECT table_name, id, name, blob
+            """SELECT table_name, id, name, blob, bm25(entities_fts) AS rank
                FROM entities_fts
                WHERE entities_fts MATCH ?
+               ORDER BY rank
                LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
+            (_fts_query(q), limit),
         ).fetchall()
-        mode = "fts"
     except sqlite3.Error:
         rows = conn.execute(
-            """SELECT table_name, id, name, blob FROM entities
+            """SELECT table_name, id, name, blob, 0 AS rank FROM entities
                WHERE lower(name) LIKE ? OR lower(blob) LIKE ?
                LIMIT ?""",
             (f"%{q.lower()}%", f"%{q.lower()}%", limit),
         ).fetchall()
         mode = "like"
+    if not rows:
+        try:
+            rows = conn.execute(
+                """SELECT e.table_name, e.id, e.name, e.blob, 0 AS rank
+                   FROM aliases a
+                   JOIN entities e ON e.table_name=a.table_name AND e.id=a.id
+                   WHERE a.alias LIKE ?
+                   LIMIT ?""",
+                (f"%{q.lower().strip()}%", limit),
+            ).fetchall()
+            mode = "alias"
+        except sqlite3.Error:
+            pass
     conn.close()
     results = [
         {"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]}
         for r in rows
     ]
     return {"q": q, "mode": mode, "count": len(results), "results": results}
+
+
+@app.get("/suggest")
+def suggest(q: str = Query(..., min_length=1), limit: int = Query(8, ge=1, le=20)):
+    conn = get_db()
+    needle = f"{q.lower().strip()}%"
+    try:
+        rows = conn.execute(
+            """SELECT table_name, id, name FROM entities
+               WHERE lower(name) LIKE ?
+               ORDER BY length(name), name
+               LIMIT ?""",
+            (needle, limit),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    conn.close()
+    return {"q": q, "suggestions": [dict(r) for r in rows]}
+
+
+@app.get("/quality")
+def quality():
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT table_name, id, issue, detail FROM quality ORDER BY issue, table_name"
+        ).fetchall()
+        by_issue = conn.execute(
+            "SELECT issue, COUNT(*) AS n FROM quality GROUP BY issue"
+        ).fetchall()
+    except sqlite3.Error:
+        conn.close()
+        return {"available": False, "issues": [], "summary": []}
+    conn.close()
+    return {
+        "available": True,
+        "count": len(rows),
+        "summary": [dict(r) for r in by_issue],
+        "issues": [dict(r) for r in rows[:200]],
+    }
+
+
+@app.get("/facets")
+def facets():
+    conn = get_db()
+    out = {}
+    for table, col in (
+        ("weapons", "type"),
+        ("weapons", "rarity"),
+        ("armor", "rarity"),
+        ("deviations", "type"),
+        ("deviations", "rarity"),
+        ("mods", "slot"),
+        ("locations", "region"),
+    ):
+        try:
+            rows = conn.execute(
+                f"SELECT {col} AS value, COUNT(*) AS n FROM {table} "
+                f"WHERE {col} IS NOT NULL AND trim({col})!='' GROUP BY {col} ORDER BY n DESC"
+            ).fetchall()
+        except sqlite3.Error:
+            continue
+        out[f"{table}.{col}"] = [dict(r) for r in rows]
+    conn.close()
+    return out
 
 
 @app.get("/links/{table}/{item_id}")

@@ -107,7 +107,29 @@ function search(q){
   q=(q||'').toLowerCase().trim();
   const pool=allEntities();
   if(!q) return pool.slice(0,50);
-  return pool.filter(e=>[e.name,e.type,e.desc,e.region,e.location,e.rarity,e.slot,(e.tags||[]).join(' ')].join(' ').toLowerCase().includes(q)).slice(0,80);
+  const local=pool.filter(e=>[e.name,e.type,e.desc,e.region,e.location,e.rarity,e.slot,(e.tags||[]).join(' ')].join(' ').toLowerCase().includes(q));
+  return local.slice(0,80);
+}
+let _suggestTimer=null;
+function attachSuggest(){
+  const input=document.getElementById('q');
+  if(!input || input.dataset.suggest) return;
+  input.dataset.suggest='1';
+  input.addEventListener('input', ()=>{
+    clearTimeout(_suggestTimer);
+    const value=input.value.trim();
+    if(value.length<2 || location.protocol==='file:') return;
+    _suggestTimer=setTimeout(async()=>{
+      try{
+        const res=await fetch('/suggest?q='+encodeURIComponent(value));
+        if(!res.ok) return;
+        const data=await res.json();
+        const box=document.getElementById('cmdres');
+        if(!box || !data.suggestions) return;
+        box.innerHTML=data.suggestions.map(s=>`<button class="card" onclick="go('db',{id:'${s.id}',table:'${s.table_name}',name:'${s.name}'})"><b>${s.name}</b><div class="muted">${s.table_name}</div></button>`).join('');
+      }catch(e){}
+    }, 180);
+  });
 }
 function renderNav(){
   const sb=document.getElementById('sidebar');
@@ -632,3 +654,5 @@ function registerSW(force){
 registerSW(false);
 bootHash();
 applyDevice(); render();
+
+try{attachSuggest();}catch(e){}

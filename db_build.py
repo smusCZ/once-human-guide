@@ -112,7 +112,26 @@ def _blob(row: dict) -> str:
 
 
 def _norm(name: str) -> str:
-    return " ".join((name or "").lower().replace("-", " ").split())
+    return " ".join((name or "").lower().replace("-", " ").replace("'", "").split())
+
+
+def _labels(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            out.extend(_labels(item))
+        return out
+    if isinstance(value, dict):
+        return _labels(value.get("name") or value.get("id") or "")
+    text = str(value)
+    if text.startswith("[") or text.startswith("{"):
+        try:
+            return _labels(json.loads(text))
+        except json.JSONDecodeError:
+            pass
+    return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
 
 
 def build(db_path: Path | None = None) -> dict:
@@ -205,6 +224,73 @@ def build(db_path: Path | None = None) -> dict:
                     ("recipes", row.get("id"), dst_table, dst_id, "ingredient", 1.0),
                 )
                 link_count += 1
+    # Drops / sources / region mentions — derived, pack files stay untouched.
+    for table, row in catalog:
+        rid = row.get("id")
+        for relation, raw in (
+            ("drop", row.get("drops")),
+            ("source", row.get("source")),
+            ("region", row.get("region") or row.get("location")),
+        ):
+            for label in _labels(raw):
+                hit = by_name.get(_norm(label))
+                if not hit:
+                    continue
+                for dst_table, dst_id in hit:
+                    if dst_table == table and dst_id == rid:
+                        continue
+                    c.execute(
+                        "INSERT OR IGNORE INTO links VALUES (?,?,?,?,?,?)",
+                        (table, rid, dst_table, dst_id, relation, 0.8),
+                    )
+                    link_count += 1
+    c.execute(
+        """CREATE TABLE aliases (
+            alias TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            id TEXT NOT NULL,
+            PRIMARY KEY (alias, table_name, id)
+        )"""
+    )
+    c.execute("CREATE INDEX idx_aliases_alias ON aliases(alias)")
+    alias_count = 0
+    for table, row in catalog:
+        name = row.get("name") or ""
+        tokens = { _norm(name) }
+        tokens.update(part for part in _norm(name).split() if len(part) > 3)
+        for tag in _labels(row.get("tags")):
+            tokens.add(_norm(tag))
+        for alias in tokens:
+            if not alias:
+                continue
+            c.execute(
+                "INSERT OR IGNORE INTO aliases VALUES (?,?,?)",
+                (alias, table, row.get("id")),
+            )
+            alias_count += 1
+    c.execute(
+        """CREATE TABLE quality (
+            table_name TEXT, id TEXT, issue TEXT, detail TEXT,
+            PRIMARY KEY (table_name, id, issue)
+        )"""
+    )
+    quality_count = 0
+    for table, row in catalog:
+        name = (row.get("name") or "").strip()
+        desc = (row.get("desc") or "").strip()
+        issues = []
+        if len(name) < 2:
+            issues.append(("short_name", name))
+        if len(desc) < 12:
+            issues.append(("thin_desc", desc or "missing"))
+        if not row.get("id"):
+            issues.append(("missing_id", name))
+        for issue, detail in issues:
+            c.execute(
+                "INSERT OR IGNORE INTO quality VALUES (?,?,?,?)",
+                (table, row.get("id"), issue, detail[:180]),
+            )
+            quality_count += 1
     c.execute(
         "CREATE VIRTUAL TABLE entities_fts USING fts5(table_name, id, name, blob, tokenize='unicode61')"
     )
@@ -212,12 +298,12 @@ def build(db_path: Path | None = None) -> dict:
         "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
     )
     c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
+        "INSERT INTO data_versions VALUES ('schema', '5.5-links-aliases-quality', ?)",
         (now,),
     )
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    return {"records": total, "links": link_count, "aliases": alias_count, "quality": quality_count, "version": ver, "db": str(path)}
 
 
 if __name__ == "__main__":

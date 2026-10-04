@@ -1,12 +1,12 @@
 {
-  "app_version": "5.4.0",
-  "shell_version": "19.1",
-  "data_version": "2026-10-01-v19.1-372",
-  "released_at": "2026-10-01T14:00:00Z",
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-04-v19.2-372",
+  "released_at": "2026-10-04T14:00:00Z",
   "min_app_version": "5.0.0",
   "patch_target": "3.0.7",
   "records": 372,
-  "sw_cache": "ohg-v19-307",
+  "sw_cache": "ohg-v19.2-307",
   "files": {
     "database_full.json": "data",
     "ohg_data.js": "pack",
@@ -22,12 +22,12 @@
     "api_main.py": "api",
     "version.json": "meta"
   },
-  "notes": "v19.1: static shell assets, FTS search, recipe links. Pack 372 beze změny. User layer nemění pack.",
+  "notes": "v19.2: derived links (drops/sources/regions), aliases, quality report, suggest + facets. Pack 372 unchanged.",
   "changelog": [
-    "API serves /modules, /ohg_data.js, /ohg_sw.js so /ui actually boots",
-    "SQLite FTS5 catalog + indexes + /search /integrity /links",
-    "db_build.py derives ingredient links without editing pack",
-    "Brand badge v19"
+    "SQLite aliases + quality tables; links from drops, sources and regions",
+    "API /suggest /quality /facets; FTS ranked with bm25 and alias fallback",
+    "Shell attaches live suggest when served from API",
+    "Pack 372 unchanged; user layer still separate"
   ],
   "github": {
     "owner": "smus-rgb",
