@@ -2,6 +2,9 @@
 
 ## 5.5.0 / shell 19.2 — 2026-10-04
 
+- Build databáze je atomický (dočasný soubor, pak replace) a FTS umí české kategorie (`zbran`)
+- `/health` vrací quick_check, schema a počet záznamů; nové `/facets`
+
 - `validate_data.py` — duplicitní id a prázdné názvy v module JSON (pack se nepřepisuje)
 - SQLite: aliasy bez diakritiky, tabulka `data_issues`, indexy `type`/`rarity`, odkazy drop/location/reward
 - Verze databáze se bere z `version.json`, ne ze starého pole v `database_full.json`

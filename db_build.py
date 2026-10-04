@@ -130,11 +130,13 @@ def _fold(name: str) -> str:
 def build(db_path: Path | None = None) -> dict:
     data = _stamp_version(load_pack())
     path = db_path or DB_PATH
-    if path.exists():
-        path.unlink()
-    conn = sqlite3.connect(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    if tmp.exists():
+        tmp.unlink()
+    conn = sqlite3.connect(tmp)
     c = conn.cursor()
-    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA journal_mode=OFF")
     ver = data.get("version", "unknown")
     now = datetime.now(timezone.utc).isoformat()
     c.execute(
@@ -208,7 +210,13 @@ def build(db_path: Path | None = None) -> dict:
                 row.get("type") or row.get("utility") or "",
                 row.get("rarity") or "",
                 row.get("region") or row.get("location") or "",
-                _blob(row),
+                _blob(row) + " " + {
+                    "weapons": "zbran zbrane weapon",
+                    "deviations": "odchylka deviant deviation",
+                    "armor": "brneni armor set",
+                    "recipes": "recept recipe vyroba",
+                    "materials": "surovina material",
+                }.get(table, ""),
             ),
         )
         key = _norm(name)
@@ -287,9 +295,11 @@ def build(db_path: Path | None = None) -> dict:
         "INSERT INTO data_versions VALUES ('schema', '5.5-aliases-issues', ?)",
         (now,),
     )
+    issues = c.execute("SELECT COUNT(*) FROM data_issues").fetchone()[0]
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    tmp.replace(path)
+    return {"records": total, "links": link_count, "issues": issues, "version": ver, "db": str(path)}
 
 
 if __name__ == "__main__":

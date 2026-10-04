@@ -121,8 +121,27 @@ def root():
 
 @app.get("/health")
 def health():
-    ok = DB_PATH.exists()
-    return {"ok": ok, "db": str(DB_PATH), "api_version": API_VERSION}
+    if not DB_PATH.exists():
+        return {"ok": False, "db": str(DB_PATH), "api_version": API_VERSION, "reason": "missing"}
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        quick = conn.execute("PRAGMA quick_check").fetchone()[0]
+        total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+        schema = conn.execute(
+            "SELECT version FROM data_versions WHERE table_name='schema'"
+        ).fetchone()
+    except sqlite3.Error as exc:
+        conn.close()
+        return {"ok": False, "db": str(DB_PATH), "error": str(exc)}
+    conn.close()
+    return {
+        "ok": quick == "ok" and total > 0,
+        "db": str(DB_PATH),
+        "api_version": API_VERSION,
+        "records": total,
+        "schema": schema[0] if schema else None,
+        "quick_check": quick,
+    }
 
 
 @app.get("/ui")
@@ -307,6 +326,22 @@ def search(
         for r in rows
     ]
     return {"q": q, "mode": mode, "count": len(results), "results": results}
+
+
+@app.get("/facets")
+def facets():
+    conn = get_db()
+    out = {}
+    for table in ("deviations", "weapons", "armor", "mods"):
+        try:
+            rows = conn.execute(
+                f"SELECT coalesce(rarity,'(none)') AS rarity, COUNT(*) AS n FROM {table} GROUP BY rarity ORDER BY n DESC"
+            ).fetchall()
+            out[table] = [dict(r) for r in rows]
+        except sqlite3.Error:
+            out[table] = []
+    conn.close()
+    return out
 
 
 @app.get("/links/{table}/{item_id}")
