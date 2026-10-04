@@ -16,8 +16,8 @@ DB_PATH = BASE / "once_human.db"
 if not DB_PATH.exists():
     DB_PATH = BASE.parent / "once_human.db"
 
-DATA_VERSION = "2026-10-01-v19.1-372"
-API_VERSION = "5.4.0"
+DATA_VERSION = "2026-10-04-v19.3-372"
+API_VERSION = "5.6.0"
 MAP_EMBEDS = {
     "thgl": "https://oncehuman.th.gl",
     "mapgenie": "https://mapgenie.io/once-human/maps/nalcott",
@@ -56,12 +56,50 @@ def get_db() -> sqlite3.Connection:
 def rows_to_list(rows) -> list[dict]:
     items = [dict(r) for r in rows]
     for item in items:
-        for key in ("tags", "ingredients", "drops", "locations", "pieces"):
+        payload = item.pop("payload", None)
+        if isinstance(payload, str) and payload:
+            try:
+                extra = json.loads(payload)
+                if isinstance(extra, dict):
+                    for key, value in extra.items():
+                        item.setdefault(key, value)
+            except Exception:
+                pass
+        for key in ("tags", "ingredients", "drops", "locations", "pieces", "aliases"):
             if key in item and isinstance(item[key], str):
                 try:
                     item[key] = json.loads(item[key] or "[]")
                 except Exception:
                     pass
+    return items
+
+
+def _merge_payload(conn: sqlite3.Connection, table: str, items: list[dict]) -> list[dict]:
+    if not items:
+        return items
+    ids = [i.get("id") for i in items if i.get("id")]
+    if not ids:
+        return items
+    try:
+        qmarks = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT id, payload FROM entities WHERE table_name=? AND id IN ({qmarks})",
+            [table, *ids],
+        ).fetchall()
+    except sqlite3.Error:
+        return items
+    by_id = {r["id"]: r["payload"] for r in rows}
+    for item in items:
+        raw = by_id.get(item.get("id"))
+        if not raw:
+            continue
+        try:
+            extra = json.loads(raw)
+        except Exception:
+            continue
+        if isinstance(extra, dict):
+            for key, value in extra.items():
+                item.setdefault(key, value)
     return items
 
 
@@ -83,8 +121,10 @@ def fetch_all(table: str, q: str | None = None, limit: int = 500, offset: int = 
     except sqlite3.Error as exc:
         conn.close()
         raise HTTPException(500, str(exc)) from exc
+    items = rows_to_list(rows)
+    items = _merge_payload(conn, table, items)
     conn.close()
-    return rows_to_list(rows)
+    return items
 
 
 @app.get("/")
@@ -112,7 +152,19 @@ def root():
 @app.get("/health")
 def health():
     ok = DB_PATH.exists()
-    return {"ok": ok, "db": str(DB_PATH), "api_version": API_VERSION}
+    records = None
+    schema = None
+    if ok:
+        conn = get_db()
+        try:
+            records = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+            row = conn.execute("SELECT version FROM data_versions WHERE table_name='schema'").fetchone()
+            schema = row["version"] if row else None
+        except sqlite3.Error:
+            records = None
+        finally:
+            conn.close()
+    return {"ok": ok, "db": str(DB_PATH), "api_version": API_VERSION, "records": records, "schema": schema}
 
 
 @app.get("/ui")
@@ -224,18 +276,26 @@ def integrity():
     }
 
 
+def _fts_query(q: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in " -_" else " " for ch in q)
+    parts = [part for part in cleaned.split() if part]
+    if not parts:
+        return '""'
+    return " ".join(part + "*" for part in parts[:6])
+
+
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
     conn = get_db()
+    mode = "fts"
     try:
         rows = conn.execute(
             """SELECT table_name, id, name, blob
                FROM entities_fts
                WHERE entities_fts MATCH ?
                LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
+            (_fts_query(q), limit),
         ).fetchall()
-        mode = "fts"
     except sqlite3.Error:
         rows = conn.execute(
             """SELECT table_name, id, name, blob FROM entities
@@ -244,10 +304,32 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
             (f"%{q.lower()}%", f"%{q.lower()}%", limit),
         ).fetchall()
         mode = "like"
+    alias_hits = []
+    try:
+        alias_hits = conn.execute(
+            """SELECT table_name, id FROM aliases
+               WHERE alias LIKE ? LIMIT ?""",
+            (f"%{q.lower().strip()}%", limit),
+        ).fetchall()
+    except sqlite3.Error:
+        alias_hits = []
+    seen = {(r["table_name"], r["id"]) for r in rows}
+    for hit in alias_hits:
+        key = (hit["table_name"], hit["id"])
+        if key in seen:
+            continue
+        ent = conn.execute(
+            "SELECT table_name, id, name, blob FROM entities WHERE table_name=? AND id=?",
+            key,
+        ).fetchone()
+        if ent:
+            rows.append(ent)
+            seen.add(key)
+            mode = mode + "+alias"
     conn.close()
     results = [
         {"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]}
-        for r in rows
+        for r in rows[:limit]
     ]
     return {"q": q, "mode": mode, "count": len(results), "results": results}
 
@@ -393,7 +475,7 @@ def update_check():
     try:
         req = urllib.request.Request(
             f"{raw}/version.json",
-            headers={"User-Agent": "OnceHumanGuide-API/5.4"},
+            headers={"User-Agent": "OnceHumanGuide-API/5.6"},
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             remote = json.loads(resp.read().decode("utf-8"))
@@ -449,10 +531,12 @@ def get_item(table: str, item_id: str):
         raise HTTPException(404, f"Unknown table: {table}")
     conn = get_db()
     row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (item_id,)).fetchone()
-    conn.close()
     if not row:
+        conn.close()
         raise HTTPException(404, f"{table}/{item_id} not found")
-    return rows_to_list([row])[0]
+    item = _merge_payload(conn, table, rows_to_list([row]))[0]
+    conn.close()
+    return item
 
 
 if __name__ == "__main__":

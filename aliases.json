@@ -1,0 +1,62 @@
+[
+  {
+    "alias": "motyl",
+    "table": "deviations",
+    "id": "dev_butterfly"
+  },
+  {
+    "alias": "butterfly",
+    "table": "deviations",
+    "id": "dev_butterfly"
+  },
+  {
+    "alias": "socr",
+    "table": "weapons",
+    "id": "w_socr_valor"
+  },
+  {
+    "alias": "last valor",
+    "table": "weapons",
+    "id": "w_socr_valor"
+  },
+  {
+    "alias": "lonewolf",
+    "table": "armor",
+    "id": "set_lonewolf"
+  },
+  {
+    "alias": "lone wolf",
+    "table": "armor",
+    "id": "set_lonewolf"
+  },
+  {
+    "alias": "vlk samotář",
+    "table": "armor",
+    "id": "set_lonewolf"
+  },
+  {
+    "alias": "shelterer",
+    "table": "armor",
+    "id": "set_shelterer"
+  },
+  {
+    "alias": "falcon",
+    "table": "armor",
+    "id": "set_falcon"
+  },
+  {
+    "alias": "sokol",
+    "table": "armor",
+    "id": "set_falcon"
+  },
+  {
+    "alias": "aws",
+    "table": "weapons",
+    "id": "w_aws_bullseye"
+  },
+  {
+    "alias": "bullseye",
+    "table": "weapons",
+    "id": "w_aws_bullseye"
+  }
+]

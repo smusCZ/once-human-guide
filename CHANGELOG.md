@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.6.0 / shell 19.3 — 2026-10-04
+
+- SQLite `entities.payload` drží celý JSON řádek, sloupcové schéma už pole nezahazuje
+- Tabulka `aliases` + `aliases.json` (krátká a česká jména, pack se nemění)
+- API `/search` spojuje FTS a aliasy, dotaz se sanitizuje
+- `/health` vrací počet entit a schéma; shell badge čte stav API
+- Pack zůstává 372 entit
+
+
 ## 5.4.0 / shell 19.1 — 2026-10-01
 
 - `/ui` servíruje shell i statické assety (`/modules`, `ohg_data.js`, `ohg_sw.js`) — SPA se na API opravdu spustí

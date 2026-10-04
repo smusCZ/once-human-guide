@@ -86,16 +86,18 @@ def _load_modules() -> dict:
 
 def load_pack() -> dict:
     full = BASE / "database_full.json"
+    data = None
     if full.exists():
-        data = json.loads(full.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and any(k in data for k in MODULES):
-            return data
-    data = _load_modules()
+        loaded = json.loads(full.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict) and any(k in loaded for k in MODULES):
+            data = loaded
+    if data is None:
+        data = _load_modules()
     ver_path = BASE / "version.json"
-    version = "local"
     if ver_path.exists():
-        version = json.loads(ver_path.read_text(encoding="utf-8")).get("data_version", version)
-    data["version"] = version
+        data["version"] = json.loads(ver_path.read_text(encoding="utf-8")).get("data_version", data.get("version", "local"))
+    else:
+        data.setdefault("version", "local")
     return data
 
 
@@ -113,6 +115,23 @@ def _blob(row: dict) -> str:
 
 def _norm(name: str) -> str:
     return " ".join((name or "").lower().replace("-", " ").split())
+
+
+
+def _aliases_for(row: dict) -> list[str]:
+    found = []
+    for key in ("name", "id"):
+        norm = _norm(str(row.get(key) or ""))
+        if norm:
+            found.append(norm)
+    extra = row.get("aliases") or row.get("aka") or []
+    if isinstance(extra, str):
+        extra = [extra]
+    for item in extra:
+        norm = _norm(str(item))
+        if norm:
+            found.append(norm)
+    return found
 
 
 def build(db_path: Path | None = None) -> dict:
@@ -138,7 +157,26 @@ def build(db_path: Path | None = None) -> dict:
             rarity TEXT,
             region TEXT,
             blob TEXT,
+            payload TEXT,
             PRIMARY KEY (table_name, id)
+        )"""
+    )
+    c.execute(
+        """CREATE TABLE aliases (
+            alias TEXT NOT NULL,
+            table_name TEXT NOT NULL,
+            id TEXT NOT NULL,
+            PRIMARY KEY (alias, table_name, id)
+        )"""
+    )
+    c.execute("CREATE INDEX idx_aliases_alias ON aliases(alias)")
+    c.execute(
+        """CREATE TABLE integrity_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            severity TEXT,
+            table_name TEXT,
+            item_id TEXT,
+            message TEXT
         )"""
     )
     c.execute(
@@ -170,7 +208,7 @@ def build(db_path: Path | None = None) -> dict:
     for table, row in catalog:
         name = row.get("name") or ""
         c.execute(
-            "INSERT OR REPLACE INTO entities VALUES (?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO entities VALUES (?,?,?,?,?,?,?,?)",
             (
                 table,
                 row.get("id"),
@@ -179,8 +217,24 @@ def build(db_path: Path | None = None) -> dict:
                 row.get("rarity") or "",
                 row.get("region") or row.get("location") or "",
                 _blob(row),
+                json.dumps(row, ensure_ascii=False),
             ),
         )
+        if not row.get("id"):
+            c.execute(
+                "INSERT INTO integrity_issues (severity, table_name, item_id, message) VALUES (?,?,?,?)",
+                ("error", table, "", "missing id"),
+            )
+        if not name:
+            c.execute(
+                "INSERT INTO integrity_issues (severity, table_name, item_id, message) VALUES (?,?,?,?)",
+                ("warn", table, row.get("id") or "", "empty name"),
+            )
+        for alias in _aliases_for(row):
+            c.execute(
+                "INSERT OR IGNORE INTO aliases VALUES (?,?,?)",
+                (alias, table, row.get("id") or ""),
+            )
         key = _norm(name)
         if key:
             by_name.setdefault(key, []).append((table, row.get("id")))
@@ -211,13 +265,22 @@ def build(db_path: Path | None = None) -> dict:
     c.execute(
         "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
     )
+    extra = BASE / "aliases.json"
+    if extra.exists():
+        raw_aliases = json.loads(extra.read_text(encoding="utf-8"))
+        for item in raw_aliases if isinstance(raw_aliases, list) else []:
+            c.execute(
+                "INSERT OR IGNORE INTO aliases VALUES (?,?,?)",
+                (_norm(item.get("alias") or ""), item.get("table"), item.get("id")),
+            )
+    issue_count = c.execute("SELECT COUNT(*) FROM integrity_issues").fetchone()[0]
     c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
+        "INSERT INTO data_versions VALUES ('schema', '5.6-payload-aliases', ?)",
         (now,),
     )
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    return {"records": total, "links": link_count, "issues": issue_count, "version": ver, "db": str(path), "schema": "5.6-payload-aliases"}
 
 
 if __name__ == "__main__":
