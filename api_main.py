@@ -16,8 +16,18 @@ DB_PATH = BASE / "once_human.db"
 if not DB_PATH.exists():
     DB_PATH = BASE.parent / "once_human.db"
 
-DATA_VERSION = "2026-10-01-v19.1-372"
-API_VERSION = "5.4.0"
+def _meta() -> dict:
+    path = BASE / "version.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+_META = _meta()
+DATA_VERSION = _META.get("data_version", "2026-10-05-v19.2-389")
+API_VERSION = _META.get("app_version", "5.5.0")
 MAP_EMBEDS = {
     "thgl": "https://oncehuman.th.gl",
     "mapgenie": "https://mapgenie.io/once-human/maps/nalcott",
@@ -56,13 +66,38 @@ def get_db() -> sqlite3.Connection:
 def rows_to_list(rows) -> list[dict]:
     items = [dict(r) for r in rows]
     for item in items:
-        for key in ("tags", "ingredients", "drops", "locations", "pieces"):
+        payload = item.pop("payload", None)
+        if isinstance(payload, str) and payload:
+            try:
+                extra = json.loads(payload)
+                if isinstance(extra, dict):
+                    for key, value in extra.items():
+                        item.setdefault(key, value)
+            except json.JSONDecodeError:
+                item["payload"] = payload
+        for key in ("tags", "ingredients", "drops", "locations", "pieces", "rewards"):
             if key in item and isinstance(item[key], str):
                 try:
                     item[key] = json.loads(item[key] or "[]")
                 except Exception:
                     pass
     return items
+
+
+def fts_query(q: str) -> str:
+    terms = []
+    buf = []
+    for ch in q:
+        if ch.isalnum() or ch in " -_":
+            buf.append(ch)
+        else:
+            buf.append(" ")
+    for part in "".join(buf).split():
+        if part:
+            terms.append(part)
+    if not terms:
+        return '""'
+    return " AND ".join(f'"{term}"*' for term in terms[:8])
 
 
 def fetch_all(table: str, q: str | None = None, limit: int = 500, offset: int = 0) -> list[dict]:
@@ -213,14 +248,32 @@ def integrity():
         counts[table] = n
         if empty:
             issues.append({"table": table, "empty_names": empty})
+    try:
+        unresolved = conn.execute(
+            "SELECT src_id, dst_id FROM links WHERE relation='unresolved_ingredient'"
+        ).fetchall()
+        for row in unresolved:
+            issues.append({"recipe": row["src_id"], "unresolved_ingredient": row["dst_id"]})
+        dupes = conn.execute(
+            """SELECT lower(name) AS name, COUNT(*) AS n FROM entities
+               WHERE name IS NOT NULL AND trim(name)!=''
+               GROUP BY lower(name) HAVING COUNT(*)>1"""
+        ).fetchall()
+        for row in dupes:
+            issues.append({"duplicate_name": row["name"], "count": row["n"]})
+    except sqlite3.Error as exc:
+        issues.append({"links": str(exc)})
     quick = conn.execute("PRAGMA quick_check").fetchone()[0]
+    expected = _meta().get("records", 389)
     conn.close()
+    hard = [i for i in issues if "error" in i or "empty_names" in i or "unresolved_ingredient" in i]
     return {
-        "ok": quick == "ok" and not issues,
+        "ok": quick == "ok" and not hard,
         "quick_check": quick,
         "counts": counts,
         "issues": issues,
-        "expected_records": 372,
+        "expected_records": expected,
+        "duplicate_names": sum(1 for i in issues if "duplicate_name" in i),
     }
 
 
@@ -233,7 +286,7 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
                FROM entities_fts
                WHERE entities_fts MATCH ?
                LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
+            (fts_query(q), limit),
         ).fetchall()
         mode = "fts"
     except sqlite3.Error:
@@ -393,7 +446,7 @@ def update_check():
     try:
         req = urllib.request.Request(
             f"{raw}/version.json",
-            headers={"User-Agent": "OnceHumanGuide-API/5.4"},
+            headers={"User-Agent": "OnceHumanGuide-API/5.5"},
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             remote = json.loads(resp.read().decode("utf-8"))

@@ -1,12 +1,12 @@
 {
-  "app_version": "5.4.0",
-  "shell_version": "19.1",
-  "data_version": "2026-10-01-v19.1-372",
-  "released_at": "2026-10-01T14:00:00Z",
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-05-v19.2-389",
+  "released_at": "2026-10-05T11:00:00Z",
   "min_app_version": "5.0.0",
   "patch_target": "3.0.7",
-  "records": 372,
-  "sw_cache": "ohg-v19-307",
+  "records": 389,
+  "sw_cache": "ohg-v19.2-307",
   "files": {
     "database_full.json": "data",
     "ohg_data.js": "pack",
@@ -22,12 +22,13 @@
     "api_main.py": "api",
     "version.json": "meta"
   },
-  "notes": "v19.1: static shell assets, FTS search, recipe links. Pack 372 beze změny. User layer nemění pack.",
+  "notes": "v19.2: module JSON is source of truth, payload column keeps extra fields, recipe ingredient aliases + 17 gatherable inputs, FTS query sanitizing. User layer does not edit the pack.",
   "changelog": [
-    "API serves /modules, /ohg_data.js, /ohg_sw.js so /ui actually boots",
-    "SQLite FTS5 catalog + indexes + /search /integrity /links",
-    "db_build.py derives ingredient links without editing pack",
-    "Brand badge v19"
+    "db_build prefers module JSON and regenerates database_full.json + ohg_data.js",
+    "SQLite payload column preserves fields outside the fixed schema",
+    "Recipe links resolve aliases (Metal Scraps, Electronics, Stardust) and new gatherables",
+    "API version comes from version.json; /integrity reports unresolved ingredients and duplicate names",
+    "Shell home shows pack 389 / app 5.5"
   ],
   "github": {
     "owner": "smus-rgb",

@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.5.0 / shell 19.2 — 2026-10-05
+
+- Module JSON je zdroj pravdy; `db_build.py` přegeneruje `database_full.json` a `ohg_data.js`.
+- SQLite drží `payload` se všemi poli, která pevné schéma zahazovalo.
+- Recepty se linkují na materiály včetně aliasů (Metal Scraps, Electronics, Stardust) a 17 nových gatherable vstupů.
+- `/integrity` hlásí nevyřešené ingredience a duplicitní jména.
+- API čte verzi z `version.json`. FTS dotaz se sanitizuje.
+- Pack: 389 entit. User layer pořád nemění pack.
+
+# Changelog
+
 ## 5.4.0 / shell 19.1 — 2026-10-01
 
 - `/ui` servíruje shell i statické assety (`/modules`, `ohg_data.js`, `ohg_sw.js`) — SPA se na API opravdu spustí

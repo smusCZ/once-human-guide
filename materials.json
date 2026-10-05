@@ -224,5 +224,210 @@
     "tags": [
       "deviation"
     ]
+  },
+  {
+    "id": "mat_meat",
+    "name": "Meat",
+    "type": "Gatherable",
+    "rarity": "Common",
+    "source": "Lov / zvířata",
+    "desc": "Základní surovina do pečení. Vstup Roasted Meat.",
+    "tags": [
+      "food",
+      "gather",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_corn",
+    "name": "Corn",
+    "type": "Gatherable",
+    "rarity": "Common",
+    "source": "Farm / pole",
+    "desc": "Vstup Corn Soup a Popcorn.",
+    "tags": [
+      "food",
+      "gather",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_water",
+    "name": "Water",
+    "type": "Gatherable",
+    "rarity": "Common",
+    "source": "Nádoby / camp",
+    "desc": "Vstup polévek, čaje a energy drinku.",
+    "tags": [
+      "food",
+      "gather",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_fruit",
+    "name": "Fruit",
+    "type": "Gatherable",
+    "rarity": "Common",
+    "source": "Křoví / farm",
+    "desc": "Vstup Fruit Tea.",
+    "tags": [
+      "food",
+      "gather",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_noodles",
+    "name": "Noodles",
+    "type": "Processed",
+    "rarity": "Common",
+    "source": "Kuchyně",
+    "desc": "Vstup Hug-In-A-Bowl.",
+    "tags": [
+      "food",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_peppercorn",
+    "name": "Deviated Peppercorn",
+    "type": "Gatherable",
+    "rarity": "Uncommon",
+    "source": "Deviované plantáže",
+    "desc": "Vstup Hug-In-A-Bowl.",
+    "tags": [
+      "food",
+      "deviated",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_inspiration",
+    "name": "Inspiration Fragment",
+    "type": "Currency",
+    "rarity": "Rare",
+    "source": "Exploration / quests",
+    "desc": "Vstup Utter Delight.",
+    "tags": [
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_keystone",
+    "name": "Spatial Keystone",
+    "type": "Key",
+    "rarity": "Rare",
+    "source": "Rift / scenario",
+    "desc": "Vstup Space Twister.",
+    "tags": [
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_plasma",
+    "name": "Plasma",
+    "type": "Component",
+    "rarity": "Uncommon",
+    "source": "Energy loot",
+    "desc": "Vstup Lightning Bottle.",
+    "tags": [
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_snowdust",
+    "name": "Snowdust",
+    "type": "Gatherable",
+    "rarity": "Uncommon",
+    "source": "Winter scenario",
+    "desc": "Vstup Snowball.",
+    "tags": [
+      "recipe-input",
+      "winter"
+    ]
+  },
+  {
+    "id": "mat_crumbs",
+    "name": "Cracker Crumbs",
+    "type": "Processed",
+    "rarity": "Common",
+    "source": "Kuchyně",
+    "desc": "Vstup Transformation Cookie.",
+    "tags": [
+      "food",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_uw_feather",
+    "name": "Upper World Feather",
+    "type": "Component",
+    "rarity": "Rare",
+    "source": "Upper World",
+    "desc": "Vstup Upper World Protection.",
+    "tags": [
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_alcohol",
+    "name": "Alcohol",
+    "type": "Processed",
+    "rarity": "Common",
+    "source": "Kuchyně / vendor",
+    "desc": "Vstup Bandage / Med Kit.",
+    "tags": [
+      "medical",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_sugar",
+    "name": "Sugar",
+    "type": "Processed",
+    "rarity": "Common",
+    "source": "Kuchyně",
+    "desc": "Vstup Energy Drink.",
+    "tags": [
+      "food",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_herbs",
+    "name": "Herbs",
+    "type": "Gatherable",
+    "rarity": "Common",
+    "source": "Rostliny",
+    "desc": "Vstup Energy Drink.",
+    "tags": [
+      "food",
+      "gather",
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_fuel",
+    "name": "Fuel",
+    "type": "Component",
+    "rarity": "Common",
+    "source": "Craft / loot",
+    "desc": "Vstup Thermal Tower a portable fuel.",
+    "tags": [
+      "recipe-input"
+    ]
+  },
+  {
+    "id": "mat_adv_parts",
+    "name": "Advanced parts",
+    "type": "Component",
+    "rarity": "Uncommon",
+    "source": "Disassembly",
+    "desc": "Vstup .338 ammo.",
+    "tags": [
+      "ammo",
+      "recipe-input"
+    ]
   }
 ]
