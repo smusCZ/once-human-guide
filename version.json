@@ -1,0 +1,39 @@
+{
+  "app_version": "5.7.0",
+  "shell_version": "19.4",
+  "data_version": "2026-10-06-v19.4-372",
+  "released_at": "2026-10-06T12:00:00Z",
+  "min_app_version": "5.0.0",
+  "patch_target": "3.0.7",
+  "records": 372,
+  "sw_cache": "ohg-v19.4-307",
+  "files": {
+    "database_full.json": "data",
+    "ohg_data.js": "pack",
+    "once_human_guide_v19.html": "ui",
+    "once_human_guide_v18.html": "ui-fallback",
+    "modules/ohg_runtime.js": "module",
+    "modules/ohg_map.js": "module",
+    "modules/ohg_builds.js": "module",
+    "modules/ohg_pack_channel.js": "module",
+    "modules/ohg_links.js": "module",
+    "modules/ohg_user.js": "module",
+    "db_build.py": "db",
+    "ohg_sw.js": "sw",
+    "api_main.py": "api",
+    "version.json": "meta"
+  },
+  "notes": "v19.4: fold search, derived links, user DB odděleně, /update/run jen s tokenem. Pack 372 beze změny.",
+  "changelog": [
+    "SQLite schema 5.7 stores folded names and unresolved link issues",
+    "User favorites/inventory/builds/queue live in once_human_user.db",
+    "POST /update/run requires OHG_UPDATE_TOKEN",
+    "API binds to 127.0.0.1"
+  ],
+  "github": {
+    "owner": "smus-rgb",
+    "repo": "once-human-guide",
+    "branch": "main",
+    "raw_base": "https://raw.githubusercontent.com/smus-rgb/once-human-guide/main"
+  }
+}
