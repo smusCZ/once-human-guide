@@ -1,0 +1,20 @@
+[
+  {"alias": "socr", "table": "weapons", "id": "w_socr_valor", "lang": "en"},
+  {"alias": "last valor", "table": "weapons", "id": "w_socr_valor", "lang": "en"},
+  {"alias": "posledni hrdost", "table": "weapons", "id": "w_socr_valor", "lang": "cs"},
+  {"alias": "odchylka", "table": "deviations", "id": "dev_butterfly", "lang": "cs"},
+  {"alias": "deviant", "table": "deviations", "id": "dev_butterfly", "lang": "en"},
+  {"alias": "motyl", "table": "deviations", "id": "dev_butterfly", "lang": "cs"},
+  {"alias": "butterfly", "table": "deviations", "id": "dev_butterfly", "lang": "en"},
+  {"alias": "vlk", "table": "deviations", "id": "dev_lonewolf", "lang": "cs"},
+  {"alias": "lonewolf", "table": "deviations", "id": "dev_lonewolf", "lang": "en"},
+  {"alias": "jidlo", "table": "recipes", "id": "rec_roasted_meat", "lang": "cs"},
+  {"alias": "jídlo", "table": "recipes", "id": "rec_roasted_meat", "lang": "cs"},
+  {"alias": "zbroj", "table": "armor", "id": "set_lonewolf", "lang": "cs"},
+  {"alias": "lonewolf set", "table": "armor", "id": "set_lonewolf", "lang": "en"},
+  {"alias": "manibus", "table": "scenarios", "id": "sc_manibus", "lang": "en"},
+  {"alias": "zima", "table": "scenarios", "id": "sc_winter", "lang": "cs"},
+  {"alias": "winter", "table": "scenarios", "id": "sc_winter", "lang": "en"},
+  {"alias": "silo", "table": "locations", "id": "loc_silo_phi", "lang": "en"},
+  {"alias": "meyer", "table": "locations", "id": "loc_meyer", "lang": "en"}
+]
