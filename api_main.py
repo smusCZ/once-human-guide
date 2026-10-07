@@ -52,7 +52,6 @@ def get_db() -> sqlite3.Connection:
 
 
 def get_user_db() -> sqlite3.Connection:
-    USER_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(USER_DB))
     conn.row_factory = sqlite3.Row
     conn.execute(
@@ -79,7 +78,7 @@ def rows_to_list(rows) -> list[dict]:
 
 def fts_query(q: str) -> str:
     tokens = re.findall(r"[\w]+", q, flags=re.UNICODE)[:8]
-    return " AND ".join(f'"{token}"*"' for token in tokens)
+    return " AND ".join('"' + token + '"*' for token in tokens)
 
 
 def fetch_all(table: str, q: str | None = None, limit: int = 500, offset: int = 0) -> list[dict]:
@@ -151,8 +150,7 @@ def sw_js():
 @app.get("/stats")
 def stats():
     conn = get_db()
-    out = {}
-    total = 0
+    out, total = {}, 0
     for table in TABLES:
         try:
             n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -169,8 +167,7 @@ def stats():
 @app.get("/integrity")
 def integrity():
     conn = get_db()
-    issues = []
-    counts = {}
+    issues, counts = [], {}
     for table in TABLES:
         try:
             n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
@@ -191,22 +188,14 @@ def integrity():
             extra[table] = None
     quick = conn.execute("PRAGMA quick_check").fetchone()[0]
     conn.close()
-    return {
-        "ok": quick == "ok" and not issues,
-        "quick_check": quick,
-        "counts": counts,
-        "audit": extra,
-        "issues": issues,
-        "expected_records": 372,
-    }
+    return {"ok": quick == "ok" and not issues, "quick_check": quick, "counts": counts, "audit": extra, "issues": issues, "expected_records": 372}
 
 
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
     conn = get_db()
     match = fts_query(q)
-    mode = "fts"
-    rows = []
+    mode, rows = "fts", []
     if match:
         try:
             rows = conn.execute(
@@ -222,10 +211,7 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
             (f"%{q.lower()}%", f"%{q.lower()}%", limit),
         ).fetchall()
     conn.close()
-    results = [
-        {"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]}
-        for r in rows
-    ]
+    results = [{"table": r["table_name"], "id": r["id"], "name": r["name"], "snippet": (r["blob"] or "")[:180]} for r in rows]
     return {"q": q, "mode": mode, "count": len(results), "results": results}
 
 
@@ -251,8 +237,7 @@ def catalog(
 ):
     if table and table not in TABLES:
         raise HTTPException(404, f"Unknown table: {table}")
-    where = ["1=1"]
-    args: list = []
+    where, args = ["1=1"], []
     if table:
         where.append("table_name=?")
         args.append(table)
@@ -266,8 +251,10 @@ def catalog(
         where.append("lower(name) LIKE ?")
         args.append(f"%{q.lower()}%")
     conn = get_db()
-    sql = f"SELECT table_name, id, name, kind, rarity, region FROM entities WHERE {' AND '.join(where)} LIMIT ? OFFSET ?"
-    rows = conn.execute(sql, (*args, limit, offset)).fetchall()
+    rows = conn.execute(
+        f"SELECT table_name, id, name, kind, rarity, region FROM entities WHERE {' AND '.join(where)} LIMIT ? OFFSET ?",
+        (*args, limit, offset),
+    ).fetchall()
     conn.close()
     return {"count": len(rows), "results": [dict(r) for r in rows]}
 
@@ -291,8 +278,7 @@ def compare(a: str = Query(...), b: str = Query(...)):
     if not left or not right:
         raise HTTPException(404, "Item missing")
     ld, rd = dict(left), dict(right)
-    keys = sorted(set(ld) | set(rd))
-    diffs = [k for k in keys if ld.get(k) != rd.get(k)]
+    diffs = [k for k in sorted(set(ld) | set(rd)) if ld.get(k) != rd.get(k)]
     return {"a": ld, "b": rd, "diff_keys": diffs}
 
 
