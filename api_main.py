@@ -16,8 +16,18 @@ DB_PATH = BASE / "once_human.db"
 if not DB_PATH.exists():
     DB_PATH = BASE.parent / "once_human.db"
 
-DATA_VERSION = "2026-10-01-v19.1-372"
-API_VERSION = "5.4.0"
+def _meta():
+    path = BASE / "version.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+_META = _meta()
+DATA_VERSION = _META.get("data_version", "2026-10-01-v19.1-372")
+API_VERSION = _META.get("app_version", "5.5.0")
 MAP_EMBEDS = {
     "thgl": "https://oncehuman.th.gl",
     "mapgenie": "https://mapgenie.io/once-human/maps/nalcott",
@@ -102,6 +112,7 @@ def root():
             "stats": "/stats",
             "search": "/search?q=",
             "integrity": "/integrity",
+            "audit": "/audit",
             "links": "/links/{table}/{id}",
             "export": "/export",
             "maps": "/maps",
@@ -187,9 +198,11 @@ def stats():
     try:
         out["links"] = conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
         out["fts"] = conn.execute("SELECT COUNT(*) FROM entities_fts").fetchone()[0]
+        out["issues"] = conn.execute("SELECT COUNT(*) FROM data_issues").fetchone()[0]
     except Exception:
         out["links"] = 0
         out["fts"] = 0
+        out["issues"] = None
     conn.close()
     out["total"] = total
     out["data_version"] = DATA_VERSION
@@ -224,6 +237,40 @@ def integrity():
     }
 
 
+def _fts_query(q: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in q)
+    terms = [t for t in cleaned.split() if t]
+    if not terms:
+        return '""'
+    return " ".join(t + "*" for t in terms[:8])
+
+
+@app.get("/audit")
+def audit():
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """SELECT severity, code, COUNT(*) AS n
+               FROM data_issues GROUP BY severity, code ORDER BY n DESC"""
+        ).fetchall()
+        sample = conn.execute(
+            """SELECT severity, code, table_name, entity_id, detail
+               FROM data_issues ORDER BY
+                 CASE severity WHEN 'error' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, id
+               LIMIT 40"""
+        ).fetchall()
+    except sqlite3.Error as exc:
+        conn.close()
+        raise HTTPException(503, f"Audit table missing — rebuild DB: {exc}") from exc
+    conn.close()
+    return {
+        "ok": not any(r["severity"] == "error" for r in rows),
+        "summary": [dict(r) for r in rows],
+        "sample": [dict(r) for r in sample],
+        "data_version": DATA_VERSION,
+    }
+
+
 @app.get("/search")
 def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)):
     conn = get_db()
@@ -233,7 +280,7 @@ def search(q: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=20
                FROM entities_fts
                WHERE entities_fts MATCH ?
                LIMIT ?""",
-            (q.replace('"', " ") + "*", limit),
+            (_fts_query(q), limit),
         ).fetchall()
         mode = "fts"
     except sqlite3.Error:

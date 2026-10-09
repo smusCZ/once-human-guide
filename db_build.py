@@ -212,12 +212,65 @@ def build(db_path: Path | None = None) -> dict:
         "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
     )
     c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
+        """CREATE TABLE data_issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            severity TEXT NOT NULL,
+            code TEXT NOT NULL,
+            table_name TEXT,
+            entity_id TEXT,
+            detail TEXT
+        )"""
+    )
+    c.execute("CREATE INDEX idx_issues_code ON data_issues(code)")
+    c.execute("CREATE INDEX idx_links_src ON links(src_table, src_id)")
+    c.execute("CREATE INDEX idx_links_dst ON links(dst_table, dst_id)")
+    issue_count = 0
+
+    def issue(severity, code, table, entity_id, detail):
+        nonlocal issue_count
+        c.execute(
+            "INSERT INTO data_issues (severity, code, table_name, entity_id, detail) VALUES (?,?,?,?,?)",
+            (severity, code, table, entity_id, detail),
+        )
+        issue_count += 1
+
+    seen = {}
+    for table, row in catalog:
+        eid = row.get("id")
+        name = (row.get("name") or "").strip()
+        if not eid:
+            issue("error", "missing_id", table, None, name or "(bez jména)")
+        else:
+            key = (table, str(eid))
+            if key in seen:
+                issue("error", "duplicate_id", table, str(eid), name)
+            seen[key] = name
+        if not name:
+            issue("warn", "empty_name", table, eid, "prázdné name")
+    for row in data.get("recipes", []):
+        ingredients = row.get("ingredients") or []
+        if isinstance(ingredients, str):
+            try:
+                ingredients = json.loads(ingredients)
+            except json.JSONDecodeError:
+                ingredients = []
+        for ing in ingredients:
+            label = ing.get("name") if isinstance(ing, dict) else str(ing)
+            if not by_name.get(_norm(label)):
+                issue("info", "unresolved_ingredient", "recipes", row.get("id"), label)
+    c.execute(
+        "INSERT INTO data_versions VALUES ('schema', '5.5-audit-links', ?)",
         (now,),
     )
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    return {
+        "records": total,
+        "links": link_count,
+        "issues": issue_count,
+        "version": ver,
+        "db": str(path),
+    }
 
 
 if __name__ == "__main__":
