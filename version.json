@@ -1,0 +1,38 @@
+{
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-12-v19.2-372",
+  "released_at": "2026-10-12T09:00:00Z",
+  "min_app_version": "5.0.0",
+  "patch_target": "3.0.7",
+  "records": 372,
+  "sw_cache": "ohg-v19-307",
+  "files": {
+    "database_full.json": "data",
+    "ohg_data.js": "pack",
+    "once_human_guide_v19.html": "ui",
+    "once_human_guide_v18.html": "ui-fallback",
+    "modules/ohg_runtime.js": "module",
+    "modules/ohg_map.js": "module",
+    "modules/ohg_builds.js": "module",
+    "modules/ohg_pack_channel.js": "module",
+    "modules/ohg_links.js": "module",
+    "db_build.py": "db",
+    "ohg_sw.js": "sw",
+    "api_main.py": "api",
+    "version.json": "meta"
+  },
+  "notes": "v19.2: data_issues audit, safer FTS, dynamic version from version.json, extra location links. Pack 372 beze změny.",
+  "changelog": [
+    "db_build.py writes data_issues (missing id, duplicates, unresolved ingredients)",
+    "API loads version from version.json, adds /audit, safer FTS query",
+    "Extra located_at links derived from location fields",
+    "Schema 5.5-fts-links-issues"
+  ],
+  "github": {
+    "owner": "smus-rgb",
+    "repo": "once-human-guide",
+    "branch": "main",
+    "raw_base": "https://raw.githubusercontent.com/smus-rgb/once-human-guide/main"
+  }
+}
