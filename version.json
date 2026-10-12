@@ -1,1 +1,38 @@
-PLACEHOLDER
+{
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-12-v19.2-372",
+  "released_at": "2026-10-12T12:00:00Z",
+  "min_app_version": "5.0.0",
+  "patch_target": "3.0.7",
+  "records": 372,
+  "sw_cache": "ohg-v19-372",
+  "files": {
+    "database_full.json": "data",
+    "ohg_data.js": "pack",
+    "once_human_guide_v19.html": "ui",
+    "once_human_guide_v18.html": "ui-fallback",
+    "modules/ohg_runtime.js": "module",
+    "modules/ohg_map.js": "module",
+    "modules/ohg_builds.js": "module",
+    "modules/ohg_pack_channel.js": "module",
+    "modules/ohg_links.js": "module",
+    "db_build.py": "db",
+    "ohg_sw.js": "sw",
+    "api_main.py": "api",
+    "version.json": "meta"
+  },
+  "notes": "v19.2 / 5.5.0: improved DB schema 5.5 (extra, data_issues, better links + FTS diacritics), API filters + /audit + dynamic version, safer search. Pack 372 unchanged. User layer separate.",
+  "changelog": [
+    "db_build.py: schema 5.5 with extra JSON, data_issues table, more indexes, located_at links, FTS unicode61 remove_diacritics 2",
+    "api_main.py: load version.json, /audit, filters on list endpoints, safer FTS, user DB stub",
+    "Bind default to 127.0.0.1",
+    "Brand ready for v19.2"
+  ],
+  "github": {
+    "owner": "smus-rgb",
+    "repo": "once-human-guide",
+    "branch": "main",
+    "raw_base": "https://raw.githubusercontent.com/smus-rgb/once-human-guide/main"
+  }
+}
