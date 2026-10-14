@@ -1,0 +1,22 @@
+{
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-14-v19.2-374",
+  "released_at": "2026-10-14T08:05:05.436809+00:00",
+  "min_app_version": "5.0.0",
+  "patch_target": "3.0.7",
+  "records": 374,
+  "sw_cache": "ohg-v19-307",
+  "notes": "v19.2: Docker support, extra DB indexes (type/rarity), upcoming Frost weapon/armor placeholders. Pack updated.",
+  "changelog": [
+    "Dockerfile for easy API deployment",
+    "Additional SQLite indexes on type and rarity",
+    "Placeholder for SOCR Cosmic Visitor and Snowline Elite Vest (Oct 21 update)"
+  ],
+  "github": {
+    "owner": "smus-rgb",
+    "repo": "once-human-guide",
+    "branch": "main",
+    "raw_base": "https://raw.githubusercontent.com/smus-rgb/once-human-guide/main"
+  }
+}
