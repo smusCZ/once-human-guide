@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.5.0 / shell 19.4 — 2026-10-16
+
+- DB schema 5.5: richer links (ingredients + drops + location/source/reward), data_issues audit, FTS5 unicode61 remove_diacritics 2, indexes on type/rarity/region/slot
+- API: version from version.json, /audit, table-filtered FTS search, filter params on list endpoints, separate once_human_user.db for favorites (survives pack rebuild)
+- Shell: modules/ohg_quality.js badge (DB OK / issues) on /ui
+- Pack remains 372 entities; user layer never writes to pack
+
 ## 5.4.0 / shell 19.1 — 2026-10-01
 
 - `/ui` servíruje shell i statické assety (`/modules`, `ohg_data.js`, `ohg_sw.js`) — SPA se na API opravdu spustí

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build once_human.db from module JSON or database_full.json.
 
-Adds indexes, a unified entity catalog, FTS5 search, and name-based links.
-User-layer data is never written here.
+Adds indexes, unified entity catalog, FTS5 (unicode61 remove_diacritics),
+richer name/id links (ingredients, drops, locations, sources), data_issues audit.
+User-layer data is never written here (separate once_human_user.db).
 """
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -112,7 +114,9 @@ def _blob(row: dict) -> str:
 
 
 def _norm(name: str) -> str:
-    return " ".join((name or "").lower().replace("-", " ").split())
+    s = (name or "").lower()
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
+    return " ".join(s.split())
 
 
 def build(db_path: Path | None = None) -> dict:
@@ -125,35 +129,65 @@ def build(db_path: Path | None = None) -> dict:
     c.execute("PRAGMA journal_mode=WAL")
     ver = data.get("version", "unknown")
     now = datetime.now(timezone.utc).isoformat()
-    c.execute(
-        "CREATE TABLE data_versions (table_name TEXT PRIMARY KEY, version TEXT, updated_at TEXT)"
-    )
+    c.execute("CREATE TABLE data_versions (table_name TEXT PRIMARY KEY, version TEXT, updated_at TEXT)")
     c.execute("INSERT INTO data_versions VALUES ('all', ?, ?)", (ver, now))
-    c.execute(
-        """CREATE TABLE entities (
-            table_name TEXT NOT NULL,
-            id TEXT NOT NULL,
-            name TEXT,
-            kind TEXT,
-            rarity TEXT,
-            region TEXT,
-            blob TEXT,
-            PRIMARY KEY (table_name, id)
-        )"""
-    )
-    c.execute(
-        """CREATE TABLE links (
-            src_table TEXT, src_id TEXT, dst_table TEXT, dst_id TEXT,
-            relation TEXT, score REAL,
-            PRIMARY KEY (src_table, src_id, dst_table, dst_id, relation)
-        )"""
-    )
+    c.execute("""CREATE TABLE entities (
+        table_name TEXT NOT NULL,
+        id TEXT NOT NULL,
+        name TEXT,
+        kind TEXT,
+        rarity TEXT,
+        region TEXT,
+        blob TEXT,
+        PRIMARY KEY (table_name, id)
+    )""")
+    c.execute("""CREATE TABLE links (
+        src_table TEXT, src_id TEXT, dst_table TEXT, dst_id TEXT,
+        relation TEXT, score REAL,
+        PRIMARY KEY (src_table, src_id, dst_table, dst_id, relation)
+    )""")
+    c.execute("""CREATE TABLE data_issues (
+        table_name TEXT, id TEXT, issue TEXT, detail TEXT,
+        PRIMARY KEY (table_name, id, issue)
+    )""")
+
     total = 0
     catalog = []
+    issues = 0
+    by_name: dict[str, list[tuple[str, str]]] = {}
+    by_id: dict[str, list[tuple[str, str]]] = {}
+
     for table, (schema, cols) in SCHEMAS.items():
         c.execute(f"CREATE TABLE {table} ({schema})")
-        c.execute(f"CREATE INDEX idx_{table}_name ON {table}(name)")
+        c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_name ON {table}(name)")
+        if "type" in cols:
+            c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_type ON {table}(type)")
+        if "rarity" in cols:
+            c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_rarity ON {table}(rarity)")
+        if "region" in cols:
+            c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_region ON {table}(region)")
+        if "slot" in cols:
+            c.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_slot ON {table}(slot)")
+
+        seen_ids = set()
         for row in data.get(table, []):
+            rid = row.get("id")
+            name = row.get("name") or ""
+            if not rid:
+                c.execute("INSERT OR IGNORE INTO data_issues VALUES (?,?,?,?)",
+                          (table, "", "missing_id", ""))
+                issues += 1
+                continue
+            if rid in seen_ids:
+                c.execute("INSERT OR IGNORE INTO data_issues VALUES (?,?,?,?)",
+                          (table, rid, "duplicate_id", ""))
+                issues += 1
+            seen_ids.add(rid)
+            if not name.strip():
+                c.execute("INSERT OR IGNORE INTO data_issues VALUES (?,?,?,?)",
+                          (table, rid, "empty_name", ""))
+                issues += 1
+
             vals = []
             for col in cols:
                 value = row.get(col)
@@ -166,25 +200,41 @@ def build(db_path: Path | None = None) -> dict:
             )
             catalog.append((table, row))
             total += 1
-    by_name: dict[str, list[tuple[str, str]]] = {}
-    for table, row in catalog:
-        name = row.get("name") or ""
-        c.execute(
-            "INSERT OR REPLACE INTO entities VALUES (?,?,?,?,?,?,?)",
-            (
-                table,
-                row.get("id"),
-                name,
-                row.get("type") or row.get("utility") or "",
-                row.get("rarity") or "",
-                row.get("region") or row.get("location") or "",
-                _blob(row),
-            ),
-        )
-        key = _norm(name)
-        if key:
-            by_name.setdefault(key, []).append((table, row.get("id")))
+            key = _norm(name)
+            if key:
+                by_name.setdefault(key, []).append((table, rid))
+            by_id.setdefault(rid, []).append((table, rid))
+
+            c.execute(
+                "INSERT OR REPLACE INTO entities VALUES (?,?,?,?,?,?,?)",
+                (
+                    table,
+                    rid,
+                    name,
+                    row.get("type") or row.get("utility") or "",
+                    row.get("rarity") or "",
+                    row.get("region") or row.get("location") or "",
+                    _blob(row),
+                ),
+            )
+
+    # Links: ingredients, drops, locations, sources, rewards
     link_count = 0
+
+    def add_link(src_table, src_id, dst_table, dst_id, relation, score=1.0):
+        nonlocal link_count
+        if not src_id or not dst_id or (src_table, src_id) == (dst_table, dst_id):
+            return
+        c.execute(
+            "INSERT OR IGNORE INTO links VALUES (?,?,?,?,?,?)",
+            (src_table, src_id, dst_table, dst_id, relation, score),
+        )
+        link_count += 1
+
+    def resolve_name(label: str):
+        return by_name.get(_norm(label), [])
+
+    # Recipes -> ingredients
     for row in data.get("recipes", []):
         ingredients = row.get("ingredients") or []
         if isinstance(ingredients, str):
@@ -194,30 +244,59 @@ def build(db_path: Path | None = None) -> dict:
                 ingredients = []
         for ing in ingredients:
             label = ing.get("name") if isinstance(ing, dict) else str(ing)
-            hit = by_name.get(_norm(label))
-            if not hit:
-                continue
-            for dst_table, dst_id in hit:
-                if dst_table == "recipes":
+            for dst_table, dst_id in resolve_name(label):
+                if dst_table != "recipes":
+                    add_link("recipes", row.get("id"), dst_table, dst_id, "ingredient")
+
+    # Bosses drops, animals drops, scenarios rewards, quests rewards, events rewards
+    for table, field, relation in [
+        ("bosses", "drops", "drops"),
+        ("animals", "drops", "drops"),
+        ("scenarios", "rewards", "reward"),
+        ("quests", "rewards", "reward"),
+        ("events", "rewards", "reward"),
+    ]:
+        for row in data.get(table, []):
+            items = row.get(field) or []
+            if isinstance(items, str):
+                try:
+                    items = json.loads(items)
+                except json.JSONDecodeError:
+                    items = []
+            for item in items:
+                label = item.get("name") if isinstance(item, dict) else str(item)
+                for dst_table, dst_id in resolve_name(label):
+                    add_link(table, row.get("id"), dst_table, dst_id, relation)
+
+    # Location / source / region references
+    for table in SCHEMAS:
+        for row in data.get(table, []):
+            for field, relation in [("location", "located_at"), ("source", "source"), ("region", "in_region")]:
+                val = row.get(field)
+                if not val or not isinstance(val, str):
                     continue
-                c.execute(
-                    "INSERT OR IGNORE INTO links VALUES (?,?,?,?,?,?)",
-                    ("recipes", row.get("id"), dst_table, dst_id, "ingredient", 1.0),
-                )
-                link_count += 1
-    c.execute(
-        "CREATE VIRTUAL TABLE entities_fts USING fts5(table_name, id, name, blob, tokenize='unicode61')"
-    )
-    c.execute(
-        "INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities"
-    )
-    c.execute(
-        "INSERT INTO data_versions VALUES ('schema', '5.4-fts-links', ?)",
-        (now,),
-    )
+                for dst_table, dst_id in resolve_name(val):
+                    if dst_table in ("locations", "npcs", "bosses"):
+                        add_link(table, row.get("id"), dst_table, dst_id, relation)
+
+    # FTS with diacritic removal for Czech-friendly search
+    c.execute("""CREATE VIRTUAL TABLE entities_fts USING fts5(
+        table_name, id, name, blob,
+        tokenize='unicode61 remove_diacritics 2'
+    )""")
+    c.execute("INSERT INTO entities_fts(table_name, id, name, blob) SELECT table_name, id, name, blob FROM entities")
+
+    c.execute("INSERT INTO data_versions VALUES ('schema', '5.5-fts-links-audit', ?)", (now,))
     conn.commit()
     conn.close()
-    return {"records": total, "links": link_count, "version": ver, "db": str(path)}
+    return {
+        "records": total,
+        "links": link_count,
+        "issues": issues,
+        "version": ver,
+        "db": str(path),
+        "schema": "5.5-fts-links-audit",
+    }
 
 
 if __name__ == "__main__":
