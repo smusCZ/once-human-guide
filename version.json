@@ -1,0 +1,22 @@
+{
+  "app_version": "5.5.0",
+  "shell_version": "19.2",
+  "data_version": "2026-10-18-v19.2-372",
+  "released_at": "2026-10-18T12:00:00Z",
+  "min_app_version": "5.0.0",
+  "patch_target": "3.0.7",
+  "records": 372,
+  "sw_cache": "ohg-v19-307",
+  "notes": "Prep for Isles of Abyss (Oct 21 2026). System and DB improvements: better FTS, additional links, version tracking.",
+  "changelog": [
+    "Added version tracking and Abyss prep notes",
+    "Improved system readiness for next patch",
+    "Database schema enhancements planned"
+  ],
+  "github": {
+    "owner": "smus-rgb",
+    "repo": "once-human-guide",
+    "branch": "main",
+    "raw_base": "https://raw.githubusercontent.com/smus-rgb/once-human-guide/main"
+  }
+}
